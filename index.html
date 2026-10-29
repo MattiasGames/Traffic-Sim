@@ -1,0 +1,749 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>3D City Driving Simulator</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body, html { width: 100%; height: 100%; overflow: hidden; background: #000; font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; user-select: none; }
+    #canvas-container { width: 100%; height: 100%; position: absolute; top: 0; left: 0; }
+
+    /* Overlay Start Screen */
+    #start-overlay { position: absolute; inset: 0; background: rgba(10, 15, 25, 0.88); backdrop-filter: blur(10px); display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 999; color: white; cursor: pointer; text-align: center; }
+    #start-overlay h1 { font-size: 3.2rem; margin-bottom: 0.5rem; text-transform: uppercase; letter-spacing: 4px; color: #38ef7d; text-shadow: 0 0 25px rgba(56, 239, 125, 0.6); }
+    #start-overlay p { font-size: 1.2rem; color: #cbd5e1; margin-bottom: 2rem; max-width: 500px; line-height: 1.5; }
+    .start-btn { background: linear-gradient(135deg, #11998e, #38ef7d); border: none; padding: 16px 48px; font-size: 1.2rem; font-weight: 800; color: #fff; border-radius: 50px; cursor: pointer; box-shadow: 0 10px 25px rgba(56, 239, 125, 0.4); transition: all 0.2s; text-transform: uppercase; letter-spacing: 1px; }
+    .start-btn:hover { transform: scale(1.05); box-shadow: 0 15px 35px rgba(56, 239, 125, 0.7); }
+
+    /* Violation Toast */
+    #violation-toast { position: absolute; top: 25px; right: 25px; background: rgba(220, 38, 38, 0.92); border-left: 6px solid #ff4d4d; color: white; padding: 14px 24px; border-radius: 10px; font-weight: bold; font-size: 1rem; backdrop-filter: blur(6px); box-shadow: 0 12px 30px rgba(220, 38, 38, 0.5); transform: translateX(180%); transition: transform 0.35s cubic-bezier(0.175, 0.885, 0.32, 1.275); z-index: 100; display: flex; align-items: center; gap: 12px; }
+    #violation-toast.show { transform: translateX(0); }
+
+    /* Bottom Dashboard Cluster */
+    #dashboard { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); display: flex; align-items: flex-end; gap: 15px; z-index: 50; pointer-events: none; }
+    .dash-panel { background: rgba(15, 23, 42, 0.85); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.15); border-radius: 20px; padding: 14px 24px; color: white; box-shadow: 0 20px 40px rgba(0, 0, 0, 0.6); display: flex; align-items: center; gap: 20px; pointer-events: auto; }
+    
+    /* Speedometer Circle */
+    .speed-gauge { position: relative; width: 100px; height: 100px; border-radius: 50%; background: radial-gradient(circle, #1e293b 0%, #0f172a 100%); border: 3px solid rgba(56, 239, 125, 0.5); display: flex; flex-direction: column; justify-content: center; align-items: center; box-shadow: inset 0 0 15px rgba(0,0,0,0.8); }
+    .speed-val { font-size: 2.3rem; font-weight: 900; line-height: 1; color: #ffffff; text-shadow: 0 0 12px rgba(255,255,255,0.4); }
+    .speed-unit { font-size: 0.75rem; color: #38ef7d; font-weight: 800; letter-spacing: 1px; margin-top: 2px; }
+    
+    /* Indicators & Status */
+    .dash-indicators { display: flex; flex-direction: column; gap: 8px; min-width: 130px; }
+    .turn-signals { display: flex; justify-content: space-between; align-items: center; }
+    .signal-icon { font-size: 1.4rem; color: #334155; transition: color 0.15s, text-shadow 0.15s; }
+    .signal-icon.active { color: #f59e0b; text-shadow: 0 0 12px #f59e0b; }
+    .gear-badge { background: #334155; padding: 4px 10px; border-radius: 6px; font-weight: bold; font-size: 0.9rem; text-align: center; color: #38ef7d; border: 1px solid rgba(56, 239, 125, 0.3); }
+    .health-bar-container { width: 100%; height: 8px; background: #334155; border-radius: 4px; overflow: hidden; margin-top: 2px; }
+    .health-bar { width: 100%; height: 100%; background: linear-gradient(90deg, #ef4444, #10b981); transition: width 0.2s; }
+
+    /* Action Quick Buttons */
+    .controls-panel { display: flex; gap: 8px; background: rgba(15, 23, 42, 0.85); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.15); border-radius: 20px; padding: 10px 14px; pointer-events: auto; }
+    .btn-action { background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 255, 255, 0.15); color: white; padding: 10px 14px; border-radius: 12px; font-size: 0.8rem; font-weight: bold; cursor: pointer; transition: all 0.2s; display: flex; flex-direction: column; align-items: center; gap: 2px; }
+    .btn-action:hover { background: rgba(56, 239, 125, 0.25); border-color: #38ef7d; transform: translateY(-2px); }
+    .btn-action span { font-size: 0.65rem; color: #94a3b8; }
+
+    /* Top Left Info Panel */
+    #info-panel { position: absolute; top: 25px; left: 25px; background: rgba(15, 23, 42, 0.85); backdrop-filter: blur(12px); border: 1px solid rgba(255,255,255,0.15); border-radius: 14px; padding: 14px 20px; color: white; font-size: 0.85rem; z-index: 50; }
+    #info-panel h3 { margin: 0 0 6px 0; font-size: 1.15rem; color: #38ef7d; letter-spacing: 1px; }
+    #info-panel p { margin: 4px 0; color: #cbd5e1; }
+
+    /* Minimap Canvas */
+    #minimap-container { position: absolute; top: 25px; right: 25px; width: 140px; height: 140px; border-radius: 50%; border: 3px solid rgba(255,255,255,0.25); overflow: hidden; background: rgba(15,23,42,0.9); box-shadow: 0 10px 30px rgba(0,0,0,0.6); z-index: 50; }
+    #minimap { width: 100%; height: 100%; }
+  </style>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+</head>
+<body>
+
+  <div id="canvas-container"></div>
+
+  <!-- Start Overlay -->
+  <div id="start-overlay" onclick="startGame()">
+    <h1>City Driver 3D</h1>
+    <p>Use <b>WASD</b> or <b>Arrow Keys</b> to drive.<br><b>Spacebar</b> to Drift | <b>Z / X</b> Turn Signals | <b>C</b> Camera View</p>
+    <button class="start-btn">CLICK TO START DRIVING</button>
+  </div>
+
+  <!-- Violation Toast -->
+  <div id="violation-toast">
+    <span style="font-size:1.6rem;">🚨</span>
+    <div>
+      <div style="font-weight:bold; letter-spacing:0.5px;">RED LIGHT VIOLATION</div>
+      <div style="font-size:0.8rem; opacity:0.9;">Traffic Fine: $150</div>
+    </div>
+  </div>
+
+  <!-- Top Left HUD Info -->
+  <div id="info-panel">
+    <h3>CITY DRIVER 3D</h3>
+    <p>Total Fines: <strong id="fines-txt" style="color:#ef4444;">$0</strong></p>
+    <p>FPS: <span id="fps-txt">60</span> | Vehicles: <span id="traffic-count">35</span></p>
+  </div>
+
+  <!-- Minimap -->
+  <div id="minimap-container">
+    <canvas id="minimap" width="140" height="140"></canvas>
+  </div>
+
+  <!-- Bottom Dashboard -->
+  <div id="dashboard">
+    <div class="dash-panel">
+      <div class="speed-gauge">
+        <div class="speed-val" id="speed-val">0</div>
+        <div class="speed-unit">MPH</div>
+      </div>
+      <div class="dash-indicators">
+        <div class="turn-signals">
+          <span id="signal-left" class="signal-icon">◀</span>
+          <span id="gear-txt" class="gear-badge">D1</span>
+          <span id="signal-right" class="signal-icon">▶</span>
+        </div>
+        <div style="font-size:0.7rem; color:#94a3b8; display:flex; justify-content:space-between;">
+          <span>VEHICLE DAMAGE</span>
+          <span id="health-pct">100%</span>
+        </div>
+        <div class="health-bar-container">
+          <div id="health-bar" class="health-bar"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="controls-panel">
+      <button class="btn-action" onclick="toggleCamera()">CAM <span>[C]</span></button>
+      <button class="btn-action" onclick="toggleLights()">LIGHTS <span>[L]</span></button>
+      <button class="btn-action" onclick="toggleSignal('left')">LEFT <span>[Z]</span></button>
+      <button class="btn-action" onclick="toggleSignal('right')">RIGHT <span>[X]</span></button>
+      <button class="btn-action" onclick="repairCar()">REPAIR <span>[R]</span></button>
+    </div>
+  </div>
+
+  <script>
+    // --- GAME ENGINE & SETUP ---
+    let scene, camera, renderer, audioCtx;
+    let playerVehicle, playerBodyGeometry;
+    let playerSpeed = 0, playerSteering = 0, playerHealth = 100, playerFines = 0;
+    let is1stPerson = false, lightsOn = false, leftSignal = false, rightSignal = false;
+    let signalTimer = 0, signalState = false;
+
+    const keys = {};
+    const trafficVehicles = [];
+    const trafficLights = [];
+    const particleSystems = [];
+    const collidableObjects = [];
+
+    // Audio Synth Variables
+    let engineOsc, engineGain, squealOsc, squealGain;
+
+    // Initialization
+    function init() {
+      const container = document.getElementById('canvas-container');
+
+      scene = new THREE.Scene();
+      scene.background = new THREE.Color(0x87ceeb);
+      scene.fog = new THREE.FogExp2(0xa0c4ff, 0.0025);
+
+      camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+
+      renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+      renderer.shadowMap.enabled = true;
+      renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+      container.appendChild(renderer.domElement);
+
+      // Lighting
+      const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+      scene.add(ambientLight);
+
+      const dirLight = new THREE.DirectionalLight(0xfffaed, 1.2);
+      dirLight.position.set(120, 200, 100);
+      dirLight.castShadow = true;
+      dirLight.shadow.mapSize.width = 2048;
+      dirLight.shadow.mapSize.height = 2048;
+      dirLight.shadow.camera.near = 0.5;
+      dirLight.shadow.camera.far = 400;
+      const d = 150;
+      dirLight.shadow.camera.left = -d;
+      dirLight.shadow.camera.right = d;
+      dirLight.shadow.camera.top = d;
+      dirLight.shadow.camera.bottom = -d;
+      scene.add(dirLight);
+
+      // Build World
+      createCityEnvironment();
+      createPlayerVehicle();
+      spawnAITraffic(35);
+
+      // Event Listeners
+      window.addEventListener('resize', onWindowResize);
+      window.addEventListener('keydown', e => { keys[e.code] = true; handleKeyPress(e.code); });
+      window.addEventListener('keyup', e => { keys[e.code] = false; });
+
+      initAudio();
+      animate();
+    }
+
+    // --- AUDIO SYNTHESIZER ---
+    function initAudio() {
+      try {
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        audioCtx = new AudioContext();
+
+        // Engine Sound
+        engineOsc = audioCtx.createOscillator();
+        engineGain = audioCtx.createGain();
+        engineOsc.type = 'sawtooth';
+        engineOsc.frequency.setValueAtTime(40, audioCtx.currentTime);
+        engineGain.gain.setValueAtTime(0.02, audioCtx.currentTime);
+        engineOsc.connect(engineGain);
+        engineGain.connect(audioCtx.destination);
+        engineOsc.start();
+
+        // Tire Squeal
+        squealOsc = audioCtx.createOscillator();
+        squealGain = audioCtx.createGain();
+        squealOsc.type = 'square';
+        squealOsc.frequency.setValueAtTime(800, audioCtx.currentTime);
+        squealGain.gain.setValueAtTime(0, audioCtx.currentTime);
+        squealOsc.connect(squealGain);
+        squealGain.connect(audioCtx.destination);
+        squealOsc.start();
+      } catch (e) {}
+    }
+
+    function playCrashSound() {
+      if (!audioCtx) return;
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(120, audioCtx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(30, audioCtx.currentTime + 0.3);
+      gain.gain.setValueAtTime(0.4, audioCtx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.3);
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.start();
+      osc.stop(audioCtx.currentTime + 0.3);
+    }
+
+    function playSirenSound() {
+      if (!audioCtx) return;
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(600, audioCtx.currentTime);
+      osc.frequency.linearRampToValueAtTime(900, audioCtx.currentTime + 0.25);
+      osc.frequency.linearRampToValueAtTime(600, audioCtx.currentTime + 0.5);
+      gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.5);
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.start();
+      osc.stop(audioCtx.currentTime + 0.5);
+    }
+
+    // --- PROCEDURAL CITY & ROUNDABOUT ---
+    function createCityEnvironment() {
+      // Ground Grass
+      const groundGeo = new THREE.PlaneGeometry(1000, 1000);
+      const groundMat = new THREE.MeshStandardMaterial({ color: 0x2e7d32, roughness: 0.9 });
+      const ground = new THREE.Mesh(groundGeo, groundMat);
+      ground.rotation.x = -Math.PI / 2;
+      ground.receiveShadow = true;
+      scene.add(ground);
+
+      // Central Roundabout Setup (As seen in reference screenshot)
+      createRoundabout(0, 0, 35);
+
+      // Grid Roads (10x10 Grid)
+      const gridSize = 8;
+      const spacing = 70;
+      for (let x = -gridSize; x <= gridSize; x++) {
+        for (let z = -gridSize; z <= gridSize; z++) {
+          const posX = x * spacing;
+          const posZ = z * spacing;
+
+          // Skip center for roundabout
+          if (Math.abs(posX) < 50 && Math.abs(posZ) < 50) continue;
+
+          createRoadBlock(posX, posZ, spacing);
+          if (Math.random() > 0.2) createBuilding(posX + 25, posZ + 25, 25, 25, 30 + Math.random() * 60);
+        }
+      }
+    }
+
+    function createRoundabout(cx, cz, radius) {
+      // Asphalt Ring
+      const ringGeo = new THREE.RingGeometry(radius - 12, radius + 12, 48);
+      const roadMat = new THREE.MeshStandardMaterial({ color: 0x222225, roughness: 0.8 });
+      const ring = new THREE.Mesh(ringGeo, roadMat);
+      ring.rotation.x = -Math.PI / 2;
+      ring.position.set(cx, 0.05, cz);
+      ring.receiveShadow = true;
+      scene.add(ring);
+
+      // Center Elevated Grass Island
+      const islandGeo = new THREE.CylinderGeometry(radius - 12, radius - 12, 1.2, 48);
+      const islandMat = new THREE.MeshStandardMaterial({ color: 0x4caf50, roughness: 0.8 });
+      const island = new THREE.Mesh(islandGeo, islandMat);
+      island.position.set(cx, 0.6, cz);
+      island.receiveShadow = true;
+      scene.add(island);
+      collidableObjects.push({ mesh: island, radius: radius - 11 });
+
+      // Chevron Boards & Tropical Palm Trees on Roundabout
+      for (let i = 0; i < 8; i++) {
+        const angle = (i / 8) * Math.PI * 2;
+        const px = cx + Math.cos(angle) * (radius - 15);
+        const pz = cz + Math.sin(angle) * (radius - 15);
+
+        // Palm Tree
+        createPalmTree(px, pz);
+
+        // Traffic Chevron Sign
+        createChevronSign(cx + Math.cos(angle) * (radius - 10), cz + Math.sin(angle) * (radius - 10), angle + Math.PI / 2);
+      }
+    }
+
+    function createPalmTree(x, z) {
+      const trunkGeo = new THREE.CylinderGeometry(0.4, 0.6, 8, 8);
+      const trunkMat = new THREE.MeshStandardMaterial({ color: 0x8d6e63, roughness: 0.9 });
+      const trunk = new THREE.Mesh(trunkGeo, trunkMat);
+      trunk.position.set(x, 4, z);
+      trunk.castShadow = true;
+      scene.add(trunk);
+
+      // Leaves
+      const leafMat = new THREE.MeshStandardMaterial({ color: 0x2e7d32, side: THREE.DoubleSide });
+      for (let i = 0; i < 6; i++) {
+        const leafGeo = new THREE.PlaneGeometry(2, 5);
+        const leaf = new THREE.Mesh(leafGeo, leafMat);
+        leaf.position.set(x, 8, z);
+        leaf.rotation.x = Math.PI / 3;
+        leaf.rotation.y = (i / 6) * Math.PI * 2;
+        scene.add(leaf);
+      }
+    }
+
+    function createChevronSign(x, z, rotation) {
+      const postGeo = new THREE.CylinderGeometry(0.08, 0.08, 2.5);
+      const metalMat = new THREE.MeshStandardMaterial({ color: 0x94a3b8, metalness: 0.8 });
+      const post = new THREE.Mesh(postGeo, metalMat);
+      post.position.set(x, 1.25, z);
+      scene.add(post);
+
+      const boardGeo = new THREE.BoxGeometry(1.8, 0.8, 0.1);
+      const boardMat = new THREE.MeshStandardMaterial({ color: 0x0f172a });
+      const board = new THREE.Mesh(boardGeo, boardMat);
+      board.position.set(x, 2, z);
+      board.rotation.y = rotation;
+      scene.add(board);
+    }
+
+    function createRoadBlock(x, z, size) {
+      const roadGeo = new THREE.PlaneGeometry(size, size);
+      const roadMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.8 });
+      const road = new THREE.Mesh(roadGeo, roadMat);
+      road.rotation.x = -Math.PI / 2;
+      road.position.set(x, 0.02, z);
+      road.receiveShadow = true;
+      scene.add(road);
+
+      // Add Traffic Light at Intersection Corner
+      if (Math.random() > 0.5) {
+        createTrafficLight(x + size / 2 - 2, z + size / 2 - 2);
+      }
+    }
+
+    function createTrafficLight(x, z) {
+      const poleGeo = new THREE.CylinderGeometry(0.15, 0.15, 6);
+      const mat = new THREE.MeshStandardMaterial({ color: 0x334155, metalness: 0.7 });
+      const pole = new THREE.Mesh(poleGeo, mat);
+      pole.position.set(x, 3, z);
+      scene.add(pole);
+
+      const boxGeo = new THREE.BoxGeometry(0.6, 1.8, 0.6);
+      const box = new THREE.Mesh(boxGeo, mat);
+      box.position.set(x, 5.5, z);
+      scene.add(box);
+
+      // Red, Yellow, Green Light Meshes
+      const redLightGeo = new THREE.SphereGeometry(0.18, 16, 16);
+      const redMat = new THREE.MeshBasicMaterial({ color: 0xff0000 });
+      const redMesh = new THREE.Mesh(redLightGeo, redMat);
+      redMesh.position.set(x, 6.1, z + 0.31);
+      scene.add(redMesh);
+
+      trafficLights.push({ x, z, redMesh, state: 'RED', timer: Math.random() * 10 });
+    }
+
+    function createBuilding(x, z, w, d, h) {
+      const geo = new THREE.BoxGeometry(w, h, d);
+      const mat = new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.3, metalness: 0.2 });
+      const bldg = new THREE.Mesh(geo, mat);
+      bldg.position.set(x, h / 2, z);
+      bldg.castShadow = true;
+      bldg.receiveShadow = true;
+      scene.add(bldg);
+      collidableObjects.push({ mesh: bldg, bbox: new THREE.Box3().setFromObject(bldg) });
+    }
+
+    // --- DETAILED PLAYER PORSCHE 911 COUPE ---
+    function createPlayerVehicle() {
+      playerVehicle = new THREE.Group();
+
+      // Subdivided Body Box Geometry for Deformable Vertex Collision
+      playerBodyGeometry = new THREE.BoxGeometry(2.1, 1.1, 4.4, 8, 4, 12);
+      const carMat = new THREE.MeshPhysicalMaterial({ color: 0xdc2626, metalness: 0.8, roughness: 0.2, clearcoat: 1.0, clearcoatRoughness: 0.1 });
+      const bodyMesh = new THREE.Mesh(playerBodyGeometry, carMat);
+      bodyMesh.position.y = 0.8;
+      bodyMesh.castShadow = true;
+      playerVehicle.add(bodyMesh);
+
+      // Wheels
+      const wheelGeo = new THREE.CylinderGeometry(0.45, 0.45, 0.35, 24);
+      const wheelMat = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.9 });
+      const rimMat = new THREE.MeshStandardMaterial({ color: 0xe2e8f0, metalness: 0.9 });
+
+      const wheelPositions = [
+        [-1.05, 0.45, 1.4], [1.05, 0.45, 1.4],
+        [-1.05, 0.45, -1.4], [1.05, 0.45, -1.4]
+      ];
+
+      wheelPositions.forEach(pos => {
+        const wheelGroup = new THREE.Group();
+        const tire = new THREE.Mesh(wheelGeo, wheelMat);
+        tire.rotation.z = Math.PI / 2;
+        tire.castShadow = true;
+        wheelGroup.add(tire);
+
+        const rim = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.28, 0.36, 12), rimMat);
+        rim.rotation.z = Math.PI / 2;
+        wheelGroup.add(rim);
+
+        wheelGroup.position.set(...pos);
+        playerVehicle.add(wheelGroup);
+      });
+
+      // License Plate "RO 10218"
+      const plateCanvas = document.createElement('canvas');
+      plateCanvas.width = 128; plateCanvas.height = 32;
+      const ctx = plateCanvas.getContext('2d');
+      ctx.fillStyle = '#ffffff'; ctx.fillRect(0,0,128,32);
+      ctx.strokeStyle = '#000000'; ctx.lineWidth = 4; ctx.strokeRect(2,2,124,28);
+      ctx.fillStyle = '#000000'; ctx.font = 'bold 16px sans-serif'; ctx.fillText('RO 10218', 20, 22);
+
+      const plateTex = new THREE.CanvasTexture(plateCanvas);
+      const plateGeo = new THREE.PlaneGeometry(0.8, 0.25);
+      const plateMat = new THREE.MeshBasicMaterial({ map: plateTex });
+      const plateMesh = new THREE.Mesh(plateGeo, plateMat);
+      plateMesh.position.set(0, 0.7, -2.21);
+      plateMesh.rotation.y = Math.PI;
+      playerVehicle.add(plateMesh);
+
+      playerVehicle.position.set(0, 0, 50);
+      scene.add(playerVehicle);
+    }
+
+    // --- AI TRAFFIC BUSES & CARS ---
+    function spawnAITraffic(count) {
+      for (let i = 0; i < count; i++) {
+        const isBus = Math.random() < 0.3;
+        const aiCar = new THREE.Group();
+
+        let width = isBus ? 2.8 : 2.0;
+        let height = isBus ? 3.2 : 1.3;
+        let length = isBus ? 9.0 : 4.2;
+
+        const bodyGeo = new THREE.BoxGeometry(width, height, length, 6, 4, 8);
+        const color = isBus ? 0xf97316 : [0x2563eb, 0x16a34a, 0xd97706, 0x475569][Math.floor(Math.random()*4)];
+        const mat = new THREE.MeshStandardMaterial({ color, roughness: 0.4 });
+        const bodyMesh = new THREE.Mesh(bodyGeo, mat);
+        bodyMesh.position.y = height / 2;
+        bodyMesh.castShadow = true;
+        aiCar.add(bodyMesh);
+
+        // Position on Road Corridor
+        const laneX = (Math.floor(Math.random() * 12) - 6) * 70 + (Math.random() > 0.5 ? 6 : -6);
+        const laneZ = (Math.floor(Math.random() * 12) - 6) * 70;
+        aiCar.position.set(laneX, 0, laneZ);
+        aiCar.rotation.y = Math.random() > 0.5 ? 0 : Math.PI;
+
+        scene.add(aiCar);
+        trafficVehicles.push({
+          group: aiCar,
+          bodyGeo,
+          speed: 0.2 + Math.random() * 0.3,
+          isBus,
+          health: 100
+        });
+      }
+    }
+
+    // --- MESH CRUMPLING DAMAGE SYSTEM ---
+    function deformMesh(geometry, impactPoint, force) {
+      const pos = geometry.attributes.position;
+      const radius = 1.8;
+
+      for (let i = 0; i < pos.count; i++) {
+        const vertex = new THREE.Vector3(pos.getX(i), pos.getY(i), pos.getZ(i));
+        const dist = vertex.distanceTo(impactPoint);
+
+        if (dist < radius) {
+          const crumpleAmount = (1 - dist / radius) * force * 0.5;
+          vertex.x += (Math.random() - 0.5) * crumpleAmount;
+          vertex.y += (Math.random() - 0.5) * crumpleAmount;
+          vertex.z -= crumpleAmount * 0.6;
+          pos.setXYZ(i, vertex.x, vertex.y, vertex.z);
+        }
+      }
+      pos.needsUpdate = true;
+      geometry.computeVertexNormals();
+    }
+
+    // --- PARTICLE EMITTER SYSTEM ---
+    function spawnCollisionParticles(point, count = 25) {
+      const geo = new THREE.BufferGeometry();
+      const positions = [];
+      const velocities = [];
+
+      for (let i = 0; i < count; i++) {
+        positions.push(point.x, point.y + 0.5, point.z);
+        velocities.push(
+          (Math.random() - 0.5) * 12,
+          Math.random() * 10 + 2,
+          (Math.random() - 0.5) * 12
+        );
+      }
+
+      geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+      const mat = new THREE.PointsMaterial({ color: 0xffaa00, size: 0.35, transparent: true, opacity: 1 });
+      const pSystem = new THREE.Points(geo, mat);
+      scene.add(pSystem);
+
+      particleSystems.push({ pSystem, velocities, life: 1.0 });
+    }
+
+    // --- GAME CONTROLS & LOGIC ---
+    function handleKeyPress(code) {
+      if (code === 'KeyC') toggleCamera();
+      if (code === 'KeyL') toggleLights();
+      if (code === 'KeyZ') toggleSignal('left');
+      if (code === 'KeyX') toggleSignal('right');
+      if (code === 'KeyR') repairCar();
+    }
+
+    function toggleCamera() { is1stPerson = !is1stPerson; }
+    function toggleLights() { lightsOn = !lightsOn; }
+    function toggleSignal(type) {
+      if (type === 'left') { leftSignal = !leftSignal; rightSignal = false; }
+      else { rightSignal = !rightSignal; leftSignal = false; }
+    }
+
+    function repairCar() {
+      playerHealth = 100;
+      updateHUD();
+      createPlayerVehicle(); // Reload pristine mesh
+    }
+
+    function startGame() {
+      document.getElementById('start-overlay').style.display = 'none';
+      if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+    }
+
+    // --- MAIN ANIMATION LOOP ---
+    function animate() {
+      requestAnimationFrame(animate);
+
+      updatePhysics();
+      updateAITraffic();
+      updateTrafficLights();
+      updateParticles();
+      updateCamera();
+      updateHUD();
+      drawMinimap();
+
+      renderer.render(scene, camera);
+    }
+
+    function updatePhysics() {
+      // Acceleration & Braking
+      if (keys['KeyW'] || keys['ArrowUp']) playerSpeed = Math.min(playerSpeed + 0.015, 1.2);
+      else if (keys['KeyS'] || keys['ArrowDown']) playerSpeed = Math.max(playerSpeed - 0.02, -0.4);
+      else playerSpeed *= 0.98; // Friction
+
+      // Steering
+      if (keys['KeyA'] || keys['ArrowLeft']) playerSteering = Math.min(playerSteering + 0.003, 0.04);
+      else if (keys['KeyD'] || keys['ArrowRight']) playerSteering = Math.max(playerSteering - 0.003, -0.04);
+      else playerSteering *= 0.85;
+
+      // Apply Steering & Movement
+      if (Math.abs(playerSpeed) > 0.01) {
+        playerVehicle.rotation.y += playerSteering * (playerSpeed > 0 ? 1 : -1);
+      }
+      playerVehicle.translateZ(playerSpeed);
+
+      // Collisions against Buildings / Roundabout
+      const playerPos = playerVehicle.position;
+      collidableObjects.forEach(obj => {
+        if (obj.radius && playerPos.distanceTo(obj.mesh.position) < obj.radius + 1.5) {
+          handleCollision(playerPos);
+        }
+      });
+
+      // Update Audio Engine Synth Pitch
+      if (engineOsc) {
+        engineOsc.frequency.setValueAtTime(30 + Math.abs(playerSpeed) * 120, audioCtx.currentTime);
+      }
+    }
+
+    function handleCollision(point) {
+      playerSpeed = -playerSpeed * 0.4; // Bounce
+      playerHealth = Math.max(0, playerHealth - 12);
+
+      playCrashSound();
+      spawnCollisionParticles(point, 30);
+
+      const localPoint = playerVehicle.worldToLocal(point.clone());
+      deformMesh(playerBodyGeometry, localPoint, 0.8);
+    }
+
+    function updateAITraffic() {
+      trafficVehicles.forEach(ai => {
+        ai.group.translateZ(ai.speed);
+
+        // Distance Check to Player Vehicle
+        const dist = ai.group.position.distanceTo(playerVehicle.position);
+        if (dist < 3.2) {
+          handleCollision(ai.group.position);
+          deformMesh(ai.bodyGeo, new THREE.Vector3(0,0,0), 1.0);
+        }
+
+        // Loop World Bounds
+        if (Math.abs(ai.group.position.x) > 400 || Math.abs(ai.group.position.z) > 400) {
+          ai.group.position.set((Math.random() - 0.5) * 300, 0, (Math.random() - 0.5) * 300);
+        }
+      });
+    }
+
+    function updateTrafficLights() {
+      trafficLights.forEach(tl => {
+        tl.timer += 0.016;
+        if (tl.timer > 10) {
+          tl.state = tl.state === 'RED' ? 'GREEN' : 'RED';
+          tl.redMesh.material.color.setHex(tl.state === 'RED' ? 0xff0000 : 0x00ff00);
+          tl.timer = 0;
+        }
+
+        // Red Light Violation Check
+        if (tl.state === 'RED' && playerVehicle.position.distanceTo(new THREE.Vector3(tl.x, 0, tl.z)) < 6) {
+          triggerRedLightViolation();
+        }
+      });
+    }
+
+    function triggerRedLightViolation() {
+      const toast = document.getElementById('violation-toast');
+      if (!toast.classList.contains('show')) {
+        toast.classList.add('show');
+        playerFines += 150;
+        document.getElementById('fines-txt').innerText = '$' + playerFines;
+        playSirenSound();
+        setTimeout(() => toast.classList.remove('show'), 3000);
+      }
+    }
+
+    function updateParticles() {
+      for (let i = particleSystems.length - 1; i >= 0; i--) {
+        const p = particleSystems[i];
+        p.life -= 0.025;
+        const pos = p.pSystem.geometry.attributes.position;
+
+        for (let j = 0; j < pos.count; j++) {
+          pos.setX(j, pos.getX(j) + p.velocities[j * 3] * 0.016);
+          pos.setY(j, pos.getY(j) + p.velocities[j * 3 + 1] * 0.016);
+          pos.setZ(j, pos.getZ(j) + p.velocities[j * 3 + 2] * 0.016);
+        }
+        pos.needsUpdate = true;
+        p.pSystem.material.opacity = p.life;
+
+        if (p.life <= 0) {
+          scene.remove(p.pSystem);
+          particleSystems.splice(i, 1);
+        }
+      }
+    }
+
+    function updateCamera() {
+      if (is1stPerson) {
+        // Cockpit Camera
+        const cp = playerVehicle.position.clone();
+        camera.position.set(cp.x, cp.y + 1.2, cp.z);
+        camera.rotation.copy(playerVehicle.rotation);
+      } else {
+        // 3rd Person Follow Camera
+        const offset = new THREE.Vector3(0, 4.5, -10).applyAxisAngle(new THREE.Vector3(0, 1, 0), playerVehicle.rotation.y);
+        const targetCamPos = playerVehicle.position.clone().add(offset);
+        camera.position.lerp(targetCamPos, 0.1);
+        camera.lookAt(playerVehicle.position.clone().add(new THREE.Vector3(0, 1.2, 0)));
+      }
+    }
+
+    function updateHUD() {
+      const mph = Math.floor(Math.abs(playerSpeed) * 110);
+      document.getElementById('speed-val').innerText = mph;
+      document.getElementById('health-pct').innerText = playerHealth + '%';
+      document.getElementById('health-bar').style.width = playerHealth + '%';
+
+      // Signals Blinking Animation
+      signalTimer += 0.016;
+      if (signalTimer > 0.3) {
+        signalState = !signalState;
+        signalTimer = 0;
+      }
+
+      document.getElementById('signal-left').classList.toggle('active', leftSignal && signalState);
+      document.getElementById('signal-right').classList.toggle('active', rightSignal && signalState);
+    }
+
+    function drawMinimap() {
+      const canvas = document.getElementById('minimap');
+      const ctx = canvas.getContext('2d');
+      ctx.clearRect(0, 0, 140, 140);
+
+      ctx.save();
+      ctx.translate(70, 70);
+      ctx.rotate(-playerVehicle.rotation.y);
+
+      // Draw AI Vehicles
+      ctx.fillStyle = '#f59e0b';
+      trafficVehicles.forEach(ai => {
+        const dx = (ai.group.position.x - playerVehicle.position.x) * 0.4;
+        const dz = (ai.group.position.z - playerVehicle.position.z) * 0.4;
+        if (Math.abs(dx) < 60 && Math.abs(dz) < 60) {
+          ctx.fillRect(dx - 3, dz - 3, 6, 6);
+        }
+      });
+
+      // Draw Player Arrow
+      ctx.fillStyle = '#38ef7d';
+      ctx.beginPath();
+      ctx.moveTo(0, -6); ctx.lineTo(5, 6); ctx.lineTo(-5, 6);
+      ctx.closePath();
+      ctx.fill();
+
+      ctx.restore();
+    }
+
+    function onWindowResize() {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    }
+
+    window.onload = init;
+  </script>
+</body>
+</html>
